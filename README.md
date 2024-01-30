@@ -82,6 +82,12 @@ OR
 kubectl apply -f elastic-search.yaml
 ```
 
+To delete the elastic-search instance 
+
+```cmd
+kubectl delete -f elastic-search.yaml
+```
+
 Monitor cluster:
 
 ```bash
@@ -117,6 +123,12 @@ OR
 
 ```cmd
 kubectl apply -f kibana.yaml
+```
+
+To delete the kibana instance 
+
+```cmd
+kubectl delete -f kibana.yaml
 ```
 
 Check instance deployment:
