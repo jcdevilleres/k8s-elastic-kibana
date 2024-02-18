@@ -144,3 +144,121 @@ Access Kibana using Elastic credentials.
 - Ensure `spec.elasticsearchRef` is identical for both Kibana and ES.
 - Minimum memory for ES is 2GB; CPU ideally 1 (configurable based on requirements).
 
+## Install Logstash on Local Minikube
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: logstash.k8s.elastic.co/v1alpha1
+kind: Logstash
+metadata:
+  name: quickstart
+spec:
+  count: 1
+  elasticsearchRefs:
+    - name: quickstart
+      clusterName: qs
+  version: 8.12.1
+  pipelines:
+    - pipeline.id: main
+      config.string: |
+        input {
+          beats {
+            port => 5044
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => [ "${QS_ES_HOSTS}" ]
+            user => "${QS_ES_USER}"
+            password => "${QS_ES_PASSWORD}"
+            ssl_certificate_authorities => "${QS_ES_SSL_CERTIFICATE_AUTHORITY}"
+          }
+        }
+  services:
+    - name: beats
+      service:
+        spec:
+          type: NodePort
+          ports:
+            - port: 5044
+              name: "filebeat"
+              protocol: TCP
+              targetPort: 5044
+EOF
+```
+
+```bash
+kubectl get logstash
+```
+
+You can now view the logs using Kibana
+
+## Troubleshooting
+
+### Issue: Cannot connect to pod resources
+
+**Solution:** Troubleshoot connectivity by logging into the pods and checking network connectivity. The suggested approach is to use the Kubernetes DNS service to resolve names to addresses. This way, changes in the IP address won't affect your service.
+
+```bash
+kubectl exec -it logstash-ls-0 -n elasticsearch -- /bin/bash
+curl -k https://elastic:9200/
+curl -k https://10.0.254.21:9200
+```
+```bash
+kubectl get service
+
+NAME                       TYPE           CLUSTER-IP     EXTERNAL-IP      PORT(S)          AGE
+elastic-es-data            ClusterIP      None           <none>           9200/TCP         35m
+elastic-es-http            LoadBalancer   10.0.197.22    X.X.X.X          9200:31316/TCP   35m
+elastic-es-internal-http   ClusterIP      10.0.122.148   <none>           9200/TCP         35m
+elastic-es-masters         ClusterIP      None           <none>           9200/TCP         35m
+elastic-es-transport       ClusterIP      None           <none>           9300/TCP         35m
+```
+
+Use hostname "elastic-es-http"
+
+```yaml
+output {
+  elasticsearch {
+    hosts => [ "https://elastic-es-http:9200" ]
+    user => "elastic"
+    password => "yourpasswordhere"
+    ssl_verification_mode => "none"
+  }
+}
+```
+
+Disable SSL verification mode by setting 'ssl_verification_mode' to none (for TESTING only)
+
+### Issue: Pods keep restarting
+
+**Solution:** Check the resource consumption of pods and adjust accordingly. Bear in mind the minimum requirements per service.
+
+```bash
+kubectl top pods -n <namespace>
+```
+
+```bash
+kubectl describe nodes -n <namespace>
+```
+
+Minimum resource configuration to run Logstash in a development environment
+
+```yaml
+resources:
+  requests:
+    memory: 0.5Gi
+    cpu: 0.1
+  limits:
+    memory: 1Gi
+    cpu: 0.2
+```
+
+### Issue: Elasticsearch keeps changing passwords upon redeployment.
+
+**Solution:** Create the Elasticsearch password inside the Kubernetes secret vault before creating the instance.
+
+```bash
+kubectl create secret generic -n <namespace> <elastic-name>-es-elastic-user --from-literal=elastic=yourpasswordhere
+```
+****
